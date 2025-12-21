@@ -8,6 +8,7 @@
       "version": "1.0.0+1",
       "dependencies": [
         "cupertino_icons",
+        "file_picker",
         "firebase_auth",
         "firebase_core",
         "flutter",
@@ -42,6 +43,19 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "file_picker",
+      "version": "7.0.2",
+      "dependencies": [
+        "ffi",
+        "flutter",
+        "flutter_plugin_android_lifecycle",
+        "flutter_web_plugins",
+        "path",
+        "plugin_platform_interface",
+        "win32"
       ]
     },
     {
@@ -197,6 +211,39 @@
       ]
     },
     {
+      "name": "win32",
+      "version": "5.2.0",
+      "dependencies": [
+        "ffi"
+      ]
+    },
+    {
+      "name": "ffi",
+      "version": "2.1.0",
+      "dependencies": []
+    },
+    {
+      "name": "plugin_platform_interface",
+      "version": "2.1.7",
+      "dependencies": [
+        "meta"
+      ]
+    },
+    {
+      "name": "flutter_plugin_android_lifecycle",
+      "version": "2.0.33",
+      "dependencies": [
+        "flutter"
+      ]
+    },
+    {
+      "name": "flutter_web_plugins",
+      "version": "0.0.0",
+      "dependencies": [
+        "flutter"
+      ]
+    },
+    {
       "name": "vector_graphics_compiler",
       "version": "1.1.11+1",
       "dependencies": [
@@ -245,20 +292,6 @@
         "meta",
         "plugin_platform_interface",
         "web"
-      ]
-    },
-    {
-      "name": "plugin_platform_interface",
-      "version": "2.1.7",
-      "dependencies": [
-        "meta"
-      ]
-    },
-    {
-      "name": "flutter_web_plugins",
-      "version": "0.0.0",
-      "dependencies": [
-        "flutter"
       ]
     },
     {
@@ -426,11 +459,6 @@
       "dependencies": [
         "collection"
       ]
-    },
-    {
-      "name": "ffi",
-      "version": "2.1.0",
-      "dependencies": []
     },
     {
       "name": "_flutterfire_internals",

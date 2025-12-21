@@ -3,7 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:rive/rive.dart';
 import 'package:rive_animation/constants.dart';
-import 'package:rive_animation/screens/home/home_screen.dart';
+import 'package:rive_animation/screens/chat/ann_chatbot_page.dart';
 import 'package:rive_animation/utils/rive_utils.dart';
 
 import '../../model/menu.dart';
@@ -92,7 +92,7 @@ class _EntryPointState extends State<EntryPoint>
                   borderRadius: BorderRadius.all(
                     Radius.circular(24),
                   ),
-                  child: HomePage(),
+                  child: AnnChatbotPage(showAppBar: false),
                 ),
               ),
             ),
