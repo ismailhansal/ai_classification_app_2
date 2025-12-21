@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../model/menu.dart';
-import '../../chat/ann_chatbot_page.dart';
-import '../../chat/cnn_chatbot_page.dart';
-import '../../chat/lstm_chatbot_page.dart';
-import '../../chat/rag_chatbot_page.dart';
 import '../../../utils/rive_utils.dart';
 import 'info_card.dart';
 import 'side_menu.dart';
 
 class SideBar extends StatefulWidget {
-  const SideBar({super.key});
+  const SideBar({super.key, required this.onSectionSelected});
+
+  final ValueChanged<String> onSectionSelected;
 
   @override
   State<SideBar> createState() => _SideBarState();
@@ -62,28 +60,7 @@ class _SideBarState extends State<SideBar> {
                           menu.title == "CNN" ||
                           menu.title == "LSTM" ||
                           menu.title == "RAG") {
-                        Widget page;
-                        switch (menu.title) {
-                          case "ANN":
-                            page = const AnnChatbotPage();
-                            break;
-                          case "CNN":
-                            page = const CnnChatbotPage();
-                            break;
-                          case "LSTM":
-                            page = const LstmChatbotPage();
-                            break;
-                          default:
-                            page = const RagChatbotPage();
-                            break;
-                        }
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => page,
-                          ),
-                        );
+                        widget.onSectionSelected(menu.title);
                       }
                     },
                     riveOnInit: (artboard) {

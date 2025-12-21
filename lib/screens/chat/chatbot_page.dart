@@ -115,6 +115,8 @@ class _ChatbotPageState extends State<ChatbotPage> {
           ? AppBar(
               backgroundColor: backgroundColor2,
               elevation: 0,
+              iconTheme: const IconThemeData(color: Colors.white),
+              foregroundColor: Colors.white,
               title: Text(
                 "${widget.section} Chat",
                 style: theme.textTheme.titleMedium?.copyWith(

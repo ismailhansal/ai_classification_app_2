@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:rive/rive.dart';
 import 'package:rive_animation/constants.dart';
 import 'package:rive_animation/screens/chat/ann_chatbot_page.dart';
+import 'package:rive_animation/screens/chat/cnn_chatbot_page.dart';
+import 'package:rive_animation/screens/chat/lstm_chatbot_page.dart';
+import 'package:rive_animation/screens/chat/rag_chatbot_page.dart';
 import 'package:rive_animation/utils/rive_utils.dart';
 
 import '../../model/menu.dart';
@@ -22,10 +25,54 @@ class _EntryPointState extends State<EntryPoint>
     with SingleTickerProviderStateMixin {
   bool isSideBarOpen = false;
 
+  int _selectedSectionIndex = 0;
+  bool _isMenuInputReady = false;
+
   Menu selectedBottonNav = bottomNavItems.first;
   Menu selectedSideMenu = sidebarMenus.first;
 
   late SMIBool isMenuOpenInput;
+
+  int _sectionIndexFromTitle(String title) {
+    switch (title) {
+      case "ANN":
+        return 0;
+      case "CNN":
+        return 1;
+      case "LSTM":
+        return 2;
+      case "RAG":
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
+  void _toggleSideBar() {
+    if (_isMenuInputReady) {
+      isMenuOpenInput.value = !isMenuOpenInput.value;
+    }
+
+    if (_animationController.value == 0) {
+      _animationController.forward();
+    } else {
+      _animationController.reverse();
+    }
+
+    setState(() {
+      isSideBarOpen = !isSideBarOpen;
+    });
+  }
+
+  void _selectSection(String title) {
+    final idx = _sectionIndexFromTitle(title);
+    setState(() {
+      _selectedSectionIndex = idx;
+    });
+    if (isSideBarOpen) {
+      _toggleSideBar();
+    }
+  }
 
   void updateSelectedBtmNav(Menu menu) {
     if (selectedBottonNav != menu) {
@@ -76,7 +123,7 @@ class _EntryPointState extends State<EntryPoint>
             curve: Curves.fastOutSlowIn,
             left: isSideBarOpen ? 0 : -288,
             top: 0,
-            child: const SideBar(),
+            child: SideBar(onSectionSelected: _selectSection),
           ),
           Transform(
             alignment: Alignment.center,
@@ -88,11 +135,19 @@ class _EntryPointState extends State<EntryPoint>
               offset: Offset(animation.value * 265, 0),
               child: Transform.scale(
                 scale: scalAnimation.value,
-                child: const ClipRRect(
+                child: ClipRRect(
                   borderRadius: BorderRadius.all(
                     Radius.circular(24),
                   ),
-                  child: AnnChatbotPage(showAppBar: false),
+                  child: IndexedStack(
+                    index: _selectedSectionIndex,
+                    children: const [
+                      AnnChatbotPage(showAppBar: false),
+                      CnnChatbotPage(showAppBar: false),
+                      LstmChatbotPage(showAppBar: false),
+                      RagChatbotPage(showAppBar: false),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -104,19 +159,7 @@ class _EntryPointState extends State<EntryPoint>
             top: 16,
             child: MenuBtn(
               press: () {
-                isMenuOpenInput.value = !isMenuOpenInput.value;
-
-                if (_animationController.value == 0) {
-                  _animationController.forward();
-                } else {
-                  _animationController.reverse();
-                }
-
-                setState(
-                  () {
-                    isSideBarOpen = !isSideBarOpen;
-                  },
-                );
+                _toggleSideBar();
               },
               riveOnInit: (artboard) {
                 final controller = StateMachineController.fromArtboard(
@@ -127,6 +170,7 @@ class _EntryPointState extends State<EntryPoint>
                 isMenuOpenInput =
                     controller.findInput<bool>("isOpen") as SMIBool;
                 isMenuOpenInput.value = true;
+                _isMenuInputReady = true;
               },
             ),
           ),
