@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "91884402726",
+    "project_id": "aiclassificationapp",
+    "storage_bucket": "aiclassificationapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:91884402726:android:3b000a7074e35741d38ee7",
+        "android_client_info": {
+          "package_name": "com.aiclassif.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDN1aiCR_grtA-94CQqh1jCbQwfvLhyLWw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:91884402726:android:e696a9bd30dc7acbd38ee7",
+        "android_client_info": {
+          "package_name": "com.example.flutter_upgrde_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDN1aiCR_grtA-94CQqh1jCbQwfvLhyLWw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
