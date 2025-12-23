@@ -34,6 +34,8 @@ dependencies:
   firebase_auth: ^6.1.3   # Mis à jour
   image: ^4.2.0   
   tflite_flutter : ^0.12.1
+  http: ^1.1.0
+
 
         # Mis à jour
   # ... le reste est correct
@@ -78,6 +80,7 @@ flutter:
     - assets/model/model_frutas.tflite
     - assets/labels.txt
     - assets/model/model_frutas_CNN.tflite
+    
 
 
 

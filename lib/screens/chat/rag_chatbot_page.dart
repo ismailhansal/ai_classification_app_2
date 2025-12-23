@@ -4,6 +4,18 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:rive_animation/constants.dart';
+import 'package:rive_animation/ml/rag_service.dart';
+
+/// Available RAG models for selection
+enum RagModel {
+  llama2('LLAMA-2', 'llama-2'),
+  gpt4('GPT-4', 'gpt-4'),
+  huggingface('Hugging Face', 'huggingface');
+
+  const RagModel(this.displayName, this.apiValue);
+  final String displayName;
+  final String apiValue;
+}
 
 class RagChatbotPage extends StatefulWidget {
   const RagChatbotPage({super.key, this.showAppBar = true});
@@ -18,8 +30,11 @@ class _RagChatbotPageState extends State<RagChatbotPage> {
   final List<_ChatMessage> _messages = [];
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final RagService _ragService = RagService();
 
   PlatformFile? _pendingAttachment;
+  RagModel _selectedModel = RagModel.llama2;
+  bool _isProcessing = false;
 
   @override
   void dispose() {
@@ -39,6 +54,7 @@ class _RagChatbotPageState extends State<RagChatbotPage> {
     );
   }
 
+  /// Pick a document/file to upload
   Future<void> _pickAttachment() async {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: false,
@@ -68,46 +84,224 @@ class _RagChatbotPageState extends State<RagChatbotPage> {
     });
   }
 
-  void _send() {
+  /// Main send function: handles document upload + prompt sending
+  /// 
+  /// Flow:
+  /// 1. If document is attached, upload it first
+  /// 2. Then send the prompt with selected model
+  /// 3. Display responses in chat
+  Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty && _pendingAttachment == null) return;
+    if (_isProcessing) return;
 
     final attachment = _pendingAttachment;
+    final prompt = text;
+    final model = _selectedModel;
 
+    // Add user message to chat
     setState(() {
       _messages.add(
         _ChatMessage(
           role: _ChatRole.user,
-          text: text,
+          text: prompt.isEmpty ? 'Uploading document...' : prompt,
           attachment: attachment,
         ),
       );
       _controller.clear();
       _pendingAttachment = null;
+      _isProcessing = true;
     });
-
     unawaited(_scrollToBottom());
 
-    unawaited(
-      Future<void>.delayed(const Duration(milliseconds: 500)).then((_) {
-        if (!mounted) return;
+    try {
+      // Step 1: Upload document if one is attached
+      if (attachment != null) {
+        await _uploadDocument(attachment);
+      }
+
+      // Step 2: Send prompt if provided
+      if (prompt.isNotEmpty) {
+        await _sendPrompt(prompt, model);
+      } else if (attachment != null) {
+        // If only document was uploaded, show success message
+        if (mounted) {
+          setState(() {
+            _messages.add(
+              _ChatMessage(
+                role: _ChatRole.assistant,
+                text: '✅ Document uploaded successfully! You can now ask questions about it.',
+              ),
+            );
+            _isProcessing = false;
+          });
+          unawaited(_scrollToBottom());
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            role: _ChatRole.assistant,
+            text: '❌ Error: $e',
+            isError: true,
+          ),
+        );
+        _isProcessing = false;
+      });
+      unawaited(_scrollToBottom());
+    }
+  }
+
+  /// Upload document to FastAPI backend
+  Future<void> _uploadDocument(PlatformFile file) async {
+    // Show uploading message
+    if (mounted) {
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            role: _ChatRole.assistant,
+            text: '📤 Uploading document...',
+            isLoading: true,
+          ),
+        );
+      });
+      unawaited(_scrollToBottom());
+    }
+
+    try {
+      final result = await _ragService.uploadDocument(file);
+
+      // Remove loading message
+      if (mounted) {
+        setState(() {
+          if (_messages.isNotEmpty && _messages.last.isLoading) {
+            _messages.removeLast();
+          }
+        });
+      }
+
+      // Show success (will be replaced by prompt response if prompt exists)
+      if (mounted && _controller.text.trim().isEmpty) {
         setState(() {
           _messages.add(
             _ChatMessage(
               role: _ChatRole.assistant,
-              text: "RAG bot: I received your message.",
+              text: '✅ Document uploaded and indexed successfully!',
             ),
           );
         });
         unawaited(_scrollToBottom());
-      }),
-    );
+      }
+    } catch (e) {
+      // Remove loading message
+      if (mounted) {
+        setState(() {
+          if (_messages.isNotEmpty && _messages.last.isLoading) {
+            _messages.removeLast();
+          }
+        });
+      }
+      throw Exception('Document upload failed: $e');
+    }
+  }
+
+  /// Send prompt/question to FastAPI RAG endpoint
+  Future<void> _sendPrompt(String prompt, RagModel model) async {
+    // Show processing message
+    if (mounted) {
+      setState(() {
+        // Remove any existing loading messages
+        if (_messages.isNotEmpty && _messages.last.isLoading) {
+          _messages.removeLast();
+        }
+        _messages.add(
+          _ChatMessage(
+            role: _ChatRole.assistant,
+            text: '🤔 Processing with ${model.displayName}...',
+            isLoading: true,
+          ),
+        );
+      });
+      unawaited(_scrollToBottom());
+    }
+
+    try {
+      final result = await _ragService.askQuestion(
+        prompt: prompt,
+        model: model.apiValue,
+      );
+
+      // Remove loading message
+      if (mounted) {
+        setState(() {
+          if (_messages.isNotEmpty && _messages.last.isLoading) {
+            _messages.removeLast();
+          }
+        });
+      }
+
+      // Extract response from FastAPI result
+      // Adjust these keys based on your FastAPI response structure
+      final responseText = result['response'] as String? ??
+          result['answer'] as String? ??
+          result['message'] as String? ??
+          result.toString();
+
+      // Add assistant response to chat
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            _ChatMessage(
+              role: _ChatRole.assistant,
+              text: responseText,
+            ),
+          );
+          _isProcessing = false;
+        });
+        unawaited(_scrollToBottom());
+      }
+    } catch (e) {
+      // Remove loading message
+      if (mounted) {
+        setState(() {
+          if (_messages.isNotEmpty && _messages.last.isLoading) {
+            _messages.removeLast();
+          }
+        });
+      }
+      throw Exception('Failed to get response: $e');
+    }
+  }
+
+  /// Reset RAG session
+  Future<void> _resetSession() async {
+    try {
+      await _ragService.resetSession();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session reset successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to reset session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Scaffold(
       backgroundColor: backgroundColor2,
       appBar: widget.showAppBar
@@ -123,6 +317,13 @@ class _RagChatbotPageState extends State<RagChatbotPage> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Reset Session',
+                  onPressed: _resetSession,
+                ),
+              ],
             )
           : null,
       body: SafeArea(
@@ -164,7 +365,7 @@ class _RagChatbotPageState extends State<RagChatbotPage> {
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
-                                        "Start chatting with RAG. You can also attach an image or document.",
+                                        "Start chatting with RAG. Upload a document and ask questions about it. Select a model from the dropdown.",
                                         style: theme.textTheme.bodyMedium
                                             ?.copyWith(color: Colors.white70),
                                       ),
@@ -192,6 +393,13 @@ class _RagChatbotPageState extends State<RagChatbotPage> {
               child: _Composer(
                 controller: _controller,
                 pendingAttachment: _pendingAttachment,
+                selectedModel: _selectedModel,
+                isProcessing: _isProcessing,
+                onModelChanged: (model) {
+                  setState(() {
+                    _selectedModel = model;
+                  });
+                },
                 onPickAttachment: _pickAttachment,
                 onRemoveAttachment: () {
                   setState(() {
@@ -211,11 +419,19 @@ class _RagChatbotPageState extends State<RagChatbotPage> {
 enum _ChatRole { user, assistant }
 
 class _ChatMessage {
-  _ChatMessage({required this.role, required this.text, this.attachment});
+  _ChatMessage({
+    required this.role,
+    required this.text,
+    this.attachment,
+    this.isLoading = false,
+    this.isError = false,
+  });
 
   final _ChatRole role;
   final String text;
   final PlatformFile? attachment;
+  final bool isLoading;
+  final bool isError;
 }
 
 class _ChatBubble extends StatelessWidget {
@@ -266,14 +482,31 @@ class _ChatBubble extends StatelessWidget {
                 border: Border.all(color: borderColor),
               ),
               child: DefaultTextStyle(
-                style: theme.textTheme.bodyMedium!.copyWith(color: textColor),
+                style: theme.textTheme.bodyMedium!.copyWith(
+                  color: message.isError ? Colors.red.shade300 : textColor,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (message.attachment != null)
                       _AttachmentInlineView(file: message.attachment!),
-                    if (message.text.isNotEmpty)
-                      Text(
+                    if (message.isLoading)
+                      const Row(
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Text('Processing...'),
+                        ],
+                      )
+                    else if (message.text.isNotEmpty)
+                      SelectableText(
                         message.text,
                       ),
                   ],
@@ -318,10 +551,14 @@ class _Avatar extends StatelessWidget {
   }
 }
 
+/// Enhanced Composer widget with model selection dropdown
 class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
     required this.pendingAttachment,
+    required this.selectedModel,
+    required this.isProcessing,
+    required this.onModelChanged,
     required this.onPickAttachment,
     required this.onRemoveAttachment,
     required this.onSend,
@@ -329,6 +566,9 @@ class _Composer extends StatelessWidget {
 
   final TextEditingController controller;
   final PlatformFile? pendingAttachment;
+  final RagModel selectedModel;
+  final bool isProcessing;
+  final ValueChanged<RagModel> onModelChanged;
   final VoidCallback onPickAttachment;
   final VoidCallback onRemoveAttachment;
   final VoidCallback onSend;
@@ -336,7 +576,6 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -347,6 +586,54 @@ class _Composer extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Model selection dropdown
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(20),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.smart_toy, color: Colors.white70, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Model:',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.white70,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<RagModel>(
+                      value: selectedModel,
+                      isExpanded: true,
+                      dropdownColor: backgroundColor2,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white,
+                      ),
+                      items: RagModel.values.map((model) {
+                        return DropdownMenuItem<RagModel>(
+                          value: model,
+                          child: Text(model.displayName),
+                        );
+                      }).toList(),
+                      onChanged: isProcessing
+                          ? null
+                          : (value) {
+                            if (value != null) {
+                              onModelChanged(value);
+                            }
+                          },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Attachment preview
           if (pendingAttachment != null) ...[
             _AttachmentPreviewRow(
               file: pendingAttachment!,
@@ -354,10 +641,11 @@ class _Composer extends StatelessWidget {
             ),
             const SizedBox(height: 10),
           ],
+          // Input row
           Row(
             children: [
               IconButton(
-                onPressed: onPickAttachment,
+                onPressed: isProcessing ? null : onPickAttachment,
                 icon: const Icon(Icons.attach_file),
                 color: Colors.white,
                 style: IconButton.styleFrom(
@@ -368,20 +656,25 @@ class _Composer extends StatelessWidget {
               Expanded(
                 child: TextField(
                   controller: controller,
+                  enabled: !isProcessing,
                   minLines: 1,
                   maxLines: 5,
                   textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => onSend(),
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: Colors.white),
+                  onSubmitted: isProcessing ? null : (_) => onSend(),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.white,
+                  ),
                   decoration: InputDecoration(
-                    hintText: 'Type a message…',
-                    hintStyle:
-                        theme.textTheme.bodyMedium?.copyWith(color: Colors.white54),
+                    hintText: 'Type a message or question...',
+                    hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                      color: Colors.white54,
+                    ),
                     filled: true,
                     fillColor: Colors.white.withAlpha(20),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide.none,
@@ -391,8 +684,17 @@ class _Composer extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               IconButton(
-                onPressed: onSend,
-                icon: const Icon(Icons.send_rounded),
+                onPressed: isProcessing ? null : onSend,
+                icon: isProcessing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.send_rounded),
                 color: Colors.white,
                 style: IconButton.styleFrom(
                   backgroundColor: const Color(0xFF6792FF),
