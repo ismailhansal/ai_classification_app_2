@@ -5,9 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
-/// Service class for ANN fruit classification using TensorFlow Lite
-class FruitAnnService {
-  static const String _modelPath = 'assets/model/model_frutas.tflite';
+/// Service class for CNN fruit classification using TensorFlow Lite
+class FruitCnnService {
+  static const String _modelPath = 'assets/model/model_frutas_CNN.tflite';
   static const String _labelsPath = 'assets/labels.txt';
   static const int _inputSize = 64; // Model expects 64x64 images
   
@@ -29,18 +29,36 @@ class FruitAnnService {
       _errorMessage = null;
       
       // Load labels from assets
-      await _loadLabels();
+      try {
+        await _loadLabels();
+      } catch (e) {
+        throw Exception('Failed to load labels: $e');
+      }
       
       // Load model from assets
-      final ByteData modelData = await rootBundle.load(_modelPath);
+      ByteData modelData;
+      try {
+        modelData = await rootBundle.load(_modelPath);
+      } catch (e) {
+        throw Exception('Failed to load model file from $_modelPath: $e. Make sure the file exists and is declared in pubspec.yaml');
+      }
+      
       final Uint8List modelBytes = modelData.buffer.asUint8List();
+      
+      if (modelBytes.isEmpty) {
+        throw Exception('Model file is empty');
+      }
 
       // Create interpreter with options
-      _interpreter = Interpreter.fromBuffer(modelBytes);
+      try {
+        _interpreter = Interpreter.fromBuffer(modelBytes);
+      } catch (e) {
+        throw Exception('Failed to create interpreter: $e');
+      }
       
       // Verify model input/output shapes
       if (_interpreter == null) {
-        throw Exception('Failed to create interpreter');
+        throw Exception('Failed to create interpreter: interpreter is null');
       }
 
       // Get input and output tensors info
@@ -54,7 +72,7 @@ class FruitAnnService {
       _isInitialized = true;
       return true;
     } catch (e) {
-      _errorMessage = 'Failed to initialize model: $e';
+      _errorMessage = 'Failed to initialize CNN model: $e';
       _isInitialized = false;
       _interpreter = null;
       _labels = [];

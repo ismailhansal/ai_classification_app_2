@@ -257,26 +257,11 @@ class _AnnChatbotPageState extends State<AnnChatbotPage> {
     buffer.writeln('🍎 Fruit Classification Result:');
     buffer.writeln('');
     
-    final predictedClass = result['predicted_class'] as int;
-    final confidence = result['confidence'] as double;
+    final predictedLabel = result['predicted_label'] as String? ?? 'Unknown';
+    final confidence = result['confidence'] as double? ?? 0.0;
     
-    buffer.writeln('Predicted Class: $predictedClass');
+    buffer.writeln('Predicted Fruit: $predictedLabel');
     buffer.writeln('Confidence: ${(confidence * 100).toStringAsFixed(2)}%');
-    buffer.writeln('');
-    
-    final probabilities = result['probabilities'] as List<dynamic>;
-    if (probabilities.isNotEmpty) {
-      buffer.writeln('All Probabilities:');
-      for (final prob in probabilities) {
-        final classIdx = prob['class_index'] as int;
-        final probValue = prob['probability'] as double;
-        buffer.writeln('  Class $classIdx: ${(probValue * 100).toStringAsFixed(2)}%');
-      }
-    }
-    
-    buffer.writeln('');
-    buffer.writeln('Raw JSON:');
-    buffer.writeln(const JsonEncoder.withIndent('  ').convert(result));
 
     return buffer.toString();
   }

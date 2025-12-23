@@ -77,6 +77,8 @@ flutter:
     - assets/RiveAssets/
     - assets/model/model_frutas.tflite
     - assets/labels.txt
+    - assets/model/model_frutas_CNN.tflite
+
 
 
 
