@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:rive_animation/screens/onboding/onboding_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'dart:typed_data';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

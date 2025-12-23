@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:rive_animation/constants.dart';
+import 'package:rive_animation/ml/fruit_ann_service.dart';
+import 'dart:io';
+
 
 class AnnChatbotPage extends StatefulWidget {
   const AnnChatbotPage({super.key, this.showAppBar = true});
@@ -17,11 +21,48 @@ class _AnnChatbotPageState extends State<AnnChatbotPage> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   PlatformFile? _pendingAttachment;
+  final FruitAnnService _annService = FruitAnnService();
+  bool _isModelLoading = false;
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeModel();
+  }
+
+  Future<void> _initializeModel() async {
+    setState(() {
+      _isModelLoading = true;
+    });
+
+    final success = await _annService.initialize();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isModelLoading = false;
+    });
+
+    if (!success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to load model: ${_annService.errorMessage ?? "Unknown error"}',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _annService.dispose();
     super.dispose();
   }
 
@@ -63,9 +104,11 @@ class _AnnChatbotPageState extends State<AnnChatbotPage> {
     });
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty && _pendingAttachment == null) return;
+    if (_isProcessing) return;
+
     final attachment = _pendingAttachment;
     setState(() {
       _messages.add(
@@ -77,22 +120,165 @@ class _AnnChatbotPageState extends State<AnnChatbotPage> {
       );
       _controller.clear();
       _pendingAttachment = null;
+      _isProcessing = true;
     });
     unawaited(_scrollToBottom());
-    unawaited(
-      Future<void>.delayed(const Duration(milliseconds: 500)).then((_) {
-        if (!mounted) return;
-        setState(() {
-          _messages.add(
-            _ChatMessage(
-              role: _ChatRole.assistant,
-              text: "ANN bot: I received your message.",
-            ),
-          );
-        });
-        unawaited(_scrollToBottom());
-      }),
-    );
+
+    // Process image if attachment is an image
+    if (attachment != null && _isImageFile(attachment)) {
+      await _processImage(attachment);
+    } else if (text.isNotEmpty) {
+      // Handle text message
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            role: _ChatRole.assistant,
+            text: "ANN bot: I received your message. Please attach an image for fruit classification.",
+          ),
+        );
+        _isProcessing = false;
+      });
+      unawaited(_scrollToBottom());
+    } else {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  bool _isImageFile(PlatformFile file) {
+    final ext = (file.extension ?? '').toLowerCase();
+    return ext == 'png' ||
+        ext == 'jpg' ||
+        ext == 'jpeg' ||
+        ext == 'webp' ||
+        ext == 'gif';
+  }
+
+  Future<void> _processImage(PlatformFile file) async {
+    if (!_annService.isInitialized) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            role: _ChatRole.assistant,
+            text: "Error: Model not initialized. Please try again.",
+            isError: true,
+          ),
+        );
+        _isProcessing = false;
+      });
+      unawaited(_scrollToBottom());
+      return;
+    }
+
+    // Show loading message
+    if (mounted) {
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            role: _ChatRole.assistant,
+            text: "Processing image...",
+            isLoading: true,
+          ),
+        );
+      });
+      unawaited(_scrollToBottom());
+    }
+
+    try {
+      // Convert PlatformFile to File if path exists, otherwise use bytes
+      Uint8List? imageBytes = file.bytes;
+      
+      if (imageBytes == null && file.path != null) {
+        final imageFile = File(file.path!);
+        imageBytes = await imageFile.readAsBytes();
+      }
+
+      if (imageBytes == null) {
+        throw Exception('Unable to read image data');
+      }
+
+      // Run inference
+      final result = await _annService.classifyImageBytes(imageBytes);
+
+      if (!mounted) return;
+
+      // Remove loading message
+      setState(() {
+        _messages.removeLast();
+      });
+
+      // Format and display result
+      final resultText = _formatResult(result);
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            role: _ChatRole.assistant,
+            text: resultText,
+            inferenceResult: result,
+          ),
+        );
+        _isProcessing = false;
+      });
+      unawaited(_scrollToBottom());
+    } catch (e) {
+      if (!mounted) return;
+
+      // Remove loading message
+      setState(() {
+        if (_messages.isNotEmpty && _messages.last.isLoading) {
+          _messages.removeLast();
+        }
+      });
+
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            role: _ChatRole.assistant,
+            text: "Error processing image: $e",
+            isError: true,
+          ),
+        );
+        _isProcessing = false;
+      });
+      unawaited(_scrollToBottom());
+    }
+  }
+
+  String _formatResult(Map<String, dynamic> result) {
+    if (result['success'] == false) {
+      return 'Classification failed: ${result['error'] ?? 'Unknown error'}';
+    }
+
+    final buffer = StringBuffer();
+    buffer.writeln('🍎 Fruit Classification Result:');
+    buffer.writeln('');
+    
+    final predictedClass = result['predicted_class'] as int;
+    final confidence = result['confidence'] as double;
+    
+    buffer.writeln('Predicted Class: $predictedClass');
+    buffer.writeln('Confidence: ${(confidence * 100).toStringAsFixed(2)}%');
+    buffer.writeln('');
+    
+    final probabilities = result['probabilities'] as List<dynamic>;
+    if (probabilities.isNotEmpty) {
+      buffer.writeln('All Probabilities:');
+      for (final prob in probabilities) {
+        final classIdx = prob['class_index'] as int;
+        final probValue = prob['probability'] as double;
+        buffer.writeln('  Class $classIdx: ${(probValue * 100).toStringAsFixed(2)}%');
+      }
+    }
+    
+    buffer.writeln('');
+    buffer.writeln('Raw JSON:');
+    buffer.writeln(const JsonEncoder.withIndent('  ').convert(result));
+
+    return buffer.toString();
   }
 
   @override
@@ -119,63 +305,78 @@ class _AnnChatbotPageState extends State<AnnChatbotPage> {
         child: Column(
           children: [
             Expanded(
-              child: _messages.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 420),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withAlpha(15),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: Colors.white.withAlpha(26),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      height: 44,
-                                      width: 44,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withAlpha(26),
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      child: const Icon(
-                                        Icons.chat_bubble_outline,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        "Start chatting with ANN. You can also attach an image or document.",
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(color: Colors.white70),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+              child: _isModelLoading
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(color: Colors.white),
+                          SizedBox(height: 16),
+                          Text(
+                            'Loading ANN model...',
+                            style: TextStyle(color: Colors.white70),
                           ),
-                        ),
+                        ],
                       ),
                     )
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
-                        final msg = _messages[index];
-                        return _ChatBubble(message: msg);
-                      },
-                    ),
+                  : _messages.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 420),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withAlpha(15),
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(
+                                        color: Colors.white.withAlpha(26),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          height: 44,
+                                          width: 44,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withAlpha(26),
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          ),
+                                          child: const Icon(
+                                            Icons.chat_bubble_outline,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            "Start chatting with ANN. Attach an image to classify fruits using the ANN model.",
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(color: Colors.white70),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                          itemCount: _messages.length,
+                          itemBuilder: (context, index) {
+                            final msg = _messages[index];
+                            return _ChatBubble(message: msg);
+                          },
+                        ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -201,10 +402,20 @@ class _AnnChatbotPageState extends State<AnnChatbotPage> {
 enum _ChatRole { user, assistant }
 
 class _ChatMessage {
-  _ChatMessage({required this.role, required this.text, this.attachment});
+  _ChatMessage({
+    required this.role,
+    required this.text,
+    this.attachment,
+    this.isLoading = false,
+    this.isError = false,
+    this.inferenceResult,
+  });
   final _ChatRole role;
   final String text;
   final PlatformFile? attachment;
+  final bool isLoading;
+  final bool isError;
+  final Map<String, dynamic>? inferenceResult;
 }
 
 class _ChatBubble extends StatelessWidget {
@@ -249,15 +460,38 @@ class _ChatBubble extends StatelessWidget {
                 border: Border.all(color: borderColor),
               ),
               child: DefaultTextStyle(
-                style: theme.textTheme.bodyMedium!.copyWith(color: textColor),
+                style: theme.textTheme.bodyMedium!.copyWith(
+                  color: message.isError ? Colors.red.shade300 : textColor,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (message.attachment != null)
                       _AttachmentInlineView(file: message.attachment!),
-                    if (message.text.isNotEmpty)
-                      Text(
+                    if (message.isLoading)
+                      const Row(
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Text('Processing...'),
+                        ],
+                      )
+                    else if (message.text.isNotEmpty)
+                      SelectableText(
                         message.text,
+                        style: TextStyle(
+                          fontFamily: message.inferenceResult != null
+                              ? 'monospace'
+                              : null,
+                          fontSize: message.inferenceResult != null ? 12 : null,
+                        ),
                       ),
                   ],
                 ),
