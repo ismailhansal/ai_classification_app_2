@@ -35,6 +35,11 @@ dependencies:
   image: ^4.2.0   
   tflite_flutter : ^0.12.1
   http: ^1.1.0
+  permission_handler: ^11.3.0
+  flutter_tts: ^4.0.2
+  speech_to_text : ^7.0.0
+  flutter_dotenv: ^5.1.0
+  google_generative_ai: ^0.4.5
 
 
         # Mis à jour
@@ -79,7 +84,9 @@ flutter:
     - assets/RiveAssets/
     - assets/model/model_frutas.tflite
     - assets/labels.txt
+    - assets/labels_CNN.txt
     - assets/model/model_frutas_CNN.tflite
+    - .env
     
 
 

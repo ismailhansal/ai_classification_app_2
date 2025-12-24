@@ -7,6 +7,7 @@ import 'package:rive_animation/screens/chat/ann_chatbot_page.dart';
 import 'package:rive_animation/screens/chat/cnn_chatbot_page.dart';
 import 'package:rive_animation/screens/chat/lstm_chatbot_page.dart';
 import 'package:rive_animation/screens/chat/rag_chatbot_page.dart';
+import 'package:rive_animation/screens/ai_assistant/ai_assistant_page.dart';
 import 'package:rive_animation/utils/rive_utils.dart';
 
 import '../../model/menu.dart';
@@ -33,18 +34,20 @@ class _EntryPointState extends State<EntryPoint>
 
   late SMIBool isMenuOpenInput;
 
-  int _sectionIndexFromTitle(String title) {
-    switch (title) {
-      case "ANN":
-        return 0;
-      case "CNN":
-        return 1;
-      case "LSTM":
-        return 2;
-      case "RAG":
-        return 3;
+  Widget _getPage() {
+    switch (_selectedSectionIndex) {
+      case 0:
+        return const AnnChatbotPage(showAppBar: false);
+      case 1:
+        return const CnnChatbotPage(showAppBar: false);
+      case 2:
+        return const LstmChatbotPage(showAppBar: false);
+      case 3:
+        return const RagChatbotPage(showAppBar: false);
+      case 4:
+        return const AiAssistantPage();
       default:
-        return 0;
+        return Container();
     }
   }
 
@@ -79,6 +82,24 @@ class _EntryPointState extends State<EntryPoint>
       setState(() {
         selectedBottonNav = menu;
       });
+    }
+  }
+
+  /// Convert menu title to section index for navigation
+  int _sectionIndexFromTitle(String title) {
+    switch (title) {
+      case "ANN":
+        return 0;
+      case "CNN":
+        return 1;
+      case "LSTM":
+        return 2;
+      case "RAG":
+        return 3;
+      case "AI Assistant":
+        return 4;
+      default:
+        return 0;
     }
   }
 
@@ -146,6 +167,7 @@ class _EntryPointState extends State<EntryPoint>
                       CnnChatbotPage(showAppBar: false),
                       LstmChatbotPage(showAppBar: false),
                       RagChatbotPage(showAppBar: false),
+                      AiAssistantPage(),
                     ],
                   ),
                 ),

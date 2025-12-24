@@ -8,8 +8,8 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 /// Service class for CNN fruit classification using TensorFlow Lite
 class FruitCnnService {
   static const String _modelPath = 'assets/model/model_frutas_CNN.tflite';
-  static const String _labelsPath = 'assets/labels.txt';
-  static const int _inputSize = 64; // Model expects 64x64 images
+  static const String _labelsPath = 'assets/labels_CNN.txt';
+  static const int _inputSize = 100; // Model expects 64x64 images
   
   Interpreter? _interpreter;
   List<String> _labels = [];
@@ -52,6 +52,9 @@ class FruitCnnService {
       // Create interpreter with options
       try {
         _interpreter = Interpreter.fromBuffer(modelBytes);
+        final outputShape = _interpreter!.getOutputTensors()[0].shape;
+    print('Output shape: $outputShape'); // ex: [1, 237]
+    print('Labels length: ${_labels.length}');
       } catch (e) {
         throw Exception('Failed to create interpreter: $e');
       }
@@ -156,130 +159,50 @@ class FruitCnnService {
   /// Run inference on image bytes
   /// Returns a JSON-like map with classification results
   Future<Map<String, dynamic>> classifyImageBytes(Uint8List imageBytes) async {
-    if (!isInitialized || _interpreter == null) {
-      throw Exception('Model not initialized. Call initialize() first.');
-    }
-
-    try {
-      // Decode image
-      final image = img.decodeImage(imageBytes);
-      if (image == null) {
-        throw Exception('Failed to decode image bytes');
-      }
-
-      // Preprocess image
-      final inputBuffer = _preprocessImage(image);
-
-      // Get input/output tensor shapes
-      final inputTensors = _interpreter!.getInputTensors();
-      final outputTensors = _interpreter!.getOutputTensors();
-
-      if (inputTensors.isEmpty || outputTensors.isEmpty) {
-        throw Exception('Invalid model structure');
-      }
-
-      final inputShape = inputTensors[0].shape;
-      final outputShape = outputTensors[0].shape;
-
-      // Prepare input tensor based on model's expected shape
-      // Common shapes: [1, 64, 64, 3] or [1, 12288] (flattened)
-      dynamic input;
-      
-      if (inputShape.length == 4) {
-        // Shape: [batch, height, width, channels] = [1, 64, 64, 3]
-        input = [
-          List.generate(
-            _inputSize,
-            (y) => List.generate(
-              _inputSize,
-              (x) {
-                final baseIndex = (y * _inputSize + x) * 3;
-                return [
-                  inputBuffer[baseIndex],
-                  inputBuffer[baseIndex + 1],
-                  inputBuffer[baseIndex + 2],
-                ];
-              },
-            ),
-          ),
-        ];
-      } else if (inputShape.length == 2) {
-        // Shape: [batch, flattened] = [1, 12288]
-        input = [inputBuffer.toList()];
-      } else {
-        // Fallback: use flattened input
-        input = [inputBuffer.toList()];
-      }
-
-      // Prepare output tensor with correct shape structure
-      // The output shape must match exactly what the model expects (e.g., [1, 237])
-      dynamic output = _createOutputTensor(outputShape);
-
-      // Run inference
-      _interpreter!.run(input, output);
-
-      // Flatten output for parsing
-      final flattenedOutput = _flattenOutput(output);
-
-      // Parse output
-      return _parseOutput(flattenedOutput, outputShape);
-    } catch (e) {
-      throw Exception('Inference failed: $e');
-    }
+  if (!isInitialized || _interpreter == null) {
+    throw Exception('Model not initialized. Call initialize() first.');
   }
 
-  /// Create output tensor with correct shape structure
-  dynamic _createOutputTensor(List<int> shape) {
-    if (shape.isEmpty) {
-      return 0.0;
+  try {
+    // Décoder l'image
+    final image = img.decodeImage(imageBytes);
+    if (image == null) {
+      throw Exception('Failed to decode image bytes');
     }
-    
-    if (shape.length == 1) {
-      // 1D: [237] -> List of 237 zeros
-      return List.filled(shape[0], 0.0);
-    }
-    
-    if (shape.length == 2) {
-      // 2D: [1, 237] -> List containing one list of 237 zeros
-      return [List.filled(shape[1], 0.0)];
-    }
-    
-    // For higher dimensions, create nested structure recursively
-    return _createNestedList(shape, 0);
-  }
 
-  /// Recursively create nested list structure matching the shape
-  dynamic _createNestedList(List<int> shape, int index) {
-    if (index == shape.length - 1) {
-      return List.filled(shape[index], 0.0);
-    }
-    return List.generate(
-      shape[index],
-      (_) => _createNestedList(shape, index + 1),
-    );
-  }
+    // Prétraitement
+    final inputBuffer = _preprocessImage(image); // Float32List de taille 64*64*3
 
-  /// Flatten nested output tensor to a flat list for parsing
-  List<double> _flattenOutput(dynamic output) {
-    if (output is List) {
-      final result = <double>[];
-      for (final item in output) {
-        if (item is List) {
-          result.addAll(_flattenOutput(item));
-        } else if (item is double) {
-          result.add(item);
-        } else if (item is int) {
-          result.add(item.toDouble());
-        }
-      }
-      return result;
-    } else if (output is double) {
-      return [output];
-    } else if (output is int) {
-      return [output.toDouble()];
-    }
-    return [];
+    // Le modèle attend [1, 64, 64, 3] en float32
+    final input = inputBuffer.reshape([1, _inputSize, _inputSize, 3]);
+
+    // Créer output tensor simple [1, nombre_classes]
+    final output = List.filled(_labels.length, 0.0).reshape([1, _labels.length]);
+
+    // Run inference
+    _interpreter!.run(input, output);
+
+    // Récupérer les scores et appliquer softmax
+    final predictions = (output[0] as List).map((e) => e as double).toList();
+    final probabilities = _applySoftmax(predictions);
+
+    // Classe prédite
+    final maxIndex = probabilities.indexWhere((p) => p == probabilities.reduce(math.max));
+    final predictedLabel = _labels[maxIndex];
+
+    return {
+      'success': true,
+      'predicted_label': predictedLabel,
+      'confidence': probabilities[maxIndex],
+    };
+  } catch (e) {
+    return {
+      'success': false,
+      'error': 'Inference failed: $e',
+    };
   }
+}
+
 
   /// Parse model output into structured JSON format
   Map<String, dynamic> _parseOutput(List<double> output, List<int> outputShape) {

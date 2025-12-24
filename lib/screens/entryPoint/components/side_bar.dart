@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:rive/rive.dart';
 
 import '../../../model/menu.dart';
+import '../../../model/rive_model.dart';
 import '../../../utils/rive_utils.dart';
 import 'info_card.dart';
 import 'side_menu.dart';
@@ -55,6 +57,33 @@ class _SideBarState extends State<SideBar> {
                       setState(() {
                         selectedSideMenu = menu;
                       });
+                      widget.onSectionSelected(menu.title);
+                    },
+                    riveOnInit: (artboard) {
+                      menu.rive.status =
+                          RiveUtils.getRiveInput(artboard,
+                              stateMachineName: menu.rive.stateMachineName);
+                    },
+                  )),
+              const SizedBox(height: 20),
+              Padding(
+                padding: const EdgeInsets.only(left: 24, bottom: 16),
+                child: Text(
+                  "More",
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium!
+                      .copyWith(color: Colors.white70),
+                ),
+              ),
+              ...sidebarMenus2.map((menu) => SideMenu(
+                    menu: menu,
+                    selectedMenu: selectedSideMenu,
+                    press: () {
+                      RiveUtils.chnageSMIBoolState(menu.rive.status!);
+                      setState(() {
+                        selectedSideMenu = menu;
+                      });
 
                       if (menu.title == "ANN" ||
                           menu.title == "CNN" ||
@@ -71,27 +100,43 @@ class _SideBarState extends State<SideBar> {
               Padding(
                 padding: const EdgeInsets.only(left: 24, top: 40, bottom: 16),
                 child: Text(
-                  "History".toUpperCase(),
+                  "AI Assistant".toUpperCase(),
                   style: Theme.of(context)
                       .textTheme
                       .titleMedium!
                       .copyWith(color: Colors.white70),
                 ),
               ),
-              ...sidebarMenus2.map((menu) => SideMenu(
-                    menu: menu,
-                    selectedMenu: selectedSideMenu,
-                    press: () {
-                      RiveUtils.chnageSMIBoolState(menu.rive.status!);
-                      setState(() {
-                        selectedSideMenu = menu;
-                      });
-                    },
-                    riveOnInit: (artboard) {
-                      menu.rive.status = RiveUtils.getRiveInput(artboard,
-                          stateMachineName: menu.rive.stateMachineName);
-                    },
-                  )),
+              SideMenu(
+                menu: Menu(
+                  title: "AI Assistant",
+                  rive: RiveModel(
+                    src: "assets/RiveAssets/icons.riv",
+                    artboard: "CHAT",
+                    stateMachineName: "CHAT_Interactivity",
+                  ),
+                ),
+                selectedMenu: selectedSideMenu,
+                press: () {
+                  setState(() {
+                    selectedSideMenu = Menu(
+                      title: "AI Assistant",
+                      rive: RiveModel(
+                        src: "assets/RiveAssets/icons.riv",
+                        artboard: "CHAT",
+                        stateMachineName: "CHAT_Interactivity",
+                      ),
+                    );
+                  });
+                  widget.onSectionSelected("AI Assistant");
+                },
+                riveOnInit: (artboard) {
+                  final controller = StateMachineController.fromArtboard(artboard, "CHAT_Interactivity");
+                  if (controller != null) {
+                    artboard.addController(controller);
+                  }
+                },
+              ),
             ],
           ),
         ),

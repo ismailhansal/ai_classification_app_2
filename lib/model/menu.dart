@@ -39,11 +39,11 @@ List<Menu> sidebarMenus = [
 ];
 List<Menu> sidebarMenus2 = [
   Menu(
-    title: "History",
+    title: "AI Assistant",
     rive: RiveModel(
         src: "assets/RiveAssets/icons.riv",
-        artboard: "TIMER",
-        stateMachineName: "TIMER_Interactivity"),
+        artboard: "CHAT",
+        stateMachineName: "CHAT_Interactivity"),
   ),
   Menu(
     title: "Notifications",

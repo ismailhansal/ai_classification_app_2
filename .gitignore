@@ -7,6 +7,10 @@ build/
 *.iml
 local.properties
 
+# Environment variables
+.env
+.env.*
+
 # Android
 .gradle/
 *.keystore
